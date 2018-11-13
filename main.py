@@ -6,7 +6,6 @@ while(True):
     slices = 2
     IP = ["200.136.191.111", "200.136.191.94"]
     i = 0
-    print("OLA")
     while i < len(IP):
         URL = "http://%s:9090/api/v1/query?" % IP[i]
         print("Starting Collecting Metrics from Slice %s" % i)
