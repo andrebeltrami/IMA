@@ -2,18 +2,35 @@ import requests
 import json
 import threading
 import time
+import pandas as pd
+import mysql.connector
+
+
+def virtualMetricsDB(virtualMetrics, cnx, agent, sliceID):
+    i = 0
+    j = 0
+
+    cursor = cnx.cursor()
+    select = 'SELECT physical_server_id FROM Physical_server WHERE ip="' + str(agent) + '" AND slice_id="' + str(sliceID) + '"'
+    cursor.execute(select)
+    for (physical_server_id) in cursor:
+        print("Physical ID: %s" % physical_server_id)
+    cnx.commit()
+
+
 
 class sliceThread (threading.Thread):
-    def __init__(self, sliceID, agents):
+    def __init__(self, sliceID, agents, cnx):
         threading.Thread.__init__(self)
         self.sliceID = sliceID
         self.agents = agents
+        self.cnx = cnx
         print(sliceID, agents)
 
     def run(self):
         while (True):
-            print("Starting Collecting Metrics from {} Agents: {}\n".format(self.sliceID,self.agents))
 
+            print("Starting Collecting Metrics from {} Agents: {}\n".format(self.sliceID,self.agents))
 
             for i in self.agents:
                 URL = "http://%s:9090/api/v1/query?" % i
@@ -21,13 +38,13 @@ class sliceThread (threading.Thread):
 
                 # Métrica 1: Virtual network receive
                 query = 'sum(rate(container_network_receive_bytes_total{name=~"%s.*"}[10s])) by (name)' % self.sliceID
-                #print(query)
                 PARAMS = {'query': query}
-
                 request = requests.get(url = URL, params = PARAMS)
                 metricV1 = json.loads(request.text)
+                print(len(metricV1['data']['result']))
                 timestamp = metricV1['data']['result'][0]['value'][0]
                 print("Métrica 1: %s\n" % metricV1)
+
 
                 #Métrica 2: Virtual network transmit
                 query = 'sum(rate(container_network_transmit_bytes_total{name=~"%s.*"}[10s])) by (name)' % self.sliceID
@@ -69,6 +86,8 @@ class sliceThread (threading.Thread):
                 metricV6 = json.loads(request.text)
                 print("Métrica 6: %s\n" % metricV6)
 
+                virtualMetrics = [metricV1, metricV2, metricV3, metricV4, metricV5, metricV6]
+
                 #Métricas Físicas
                 #Métrica 1: Physical Network receive
                 query = 'sum(rate(container_network_receive_bytes_total{id="/"}[10s])) by (id)'
@@ -102,6 +121,10 @@ class sliceThread (threading.Thread):
                 metricP4 = json.loads(request.text)
                 print("Métrica P4: %s" % metricP4)
 
+                physicalMetrics = [metricP1, metricP2, metricP3, metricP4]
+                virtualMetricsDB(virtualMetrics, self.cnx, i, self.sliceID)
+
+
 
                 #Métrica 5: Physical Disk Bytes Reads
                 #query = 'sum(rate(node_disk_bytes_read_total[10s])) by (device)'
@@ -125,14 +148,39 @@ class sliceThread (threading.Thread):
 
 
 
-agentsList = ['slice1', ['200.136.191.111'], 'slice2', ['200.136.191.94']]
+agentsList = ['slice1', ['200.136.191.94'], 'slice2', ['200.136.191.111']]
 #for key, value in agentsList.items():
 
-threadSlice1 = sliceThread(agentsList[0], agentsList[1])
-threadSlice2 = sliceThread(agentsList[2], agentsList[3])
+cnx = mysql.connector.connect(user="andre", password="openstack",
+                                          host="localhost",
+                                          database="leris_db")
+cnx2 = mysql.connector.connect(user="andre", password="openstack",
+                                          host="localhost",
+                                          database="leris_db")
+
+cursor = cnx.cursor()
+i = 0
+
+while i < len(agentsList):
+    addSlice = 'INSERT INTO `Slice` (`slice_id`) VALUES("' + str(agentsList[i]) + '")'
+    cursor.execute(addSlice)
+    cnx.commit()
+    j = 0
+    while j < len(agentsList[i+1]):
+        addPhysicalServer = 'INSERT INTO `Physical_server` (`ip`, `slice_id`) VALUES("' + str(agentsList[i+1][j]) + '", "' + str(agentsList[i]) + '")'
+        print(addPhysicalServer)
+        cursor.execute(addPhysicalServer)
+        cnx.commit()
+        j = j + 1
+    i = i + 2
+
+threadSlice1 = sliceThread(agentsList[0], agentsList[1], cnx)
+threadSlice2 = sliceThread(agentsList[2], agentsList[3], cnx2)
 
 threadSlice1.start()
 threadSlice2.start()
+
+
 
 
 
