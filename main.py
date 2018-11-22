@@ -4,6 +4,7 @@ import threading
 import time
 import pandas as pd
 import mysql.connector
+import re
 
 
 def virtualMetricsDB(virtualMetrics, cnx, agent, sliceID):
@@ -13,10 +14,19 @@ def virtualMetricsDB(virtualMetrics, cnx, agent, sliceID):
     cursor = cnx.cursor()
     select = 'SELECT physical_server_id FROM Physical_server WHERE ip="' + str(agent) + '" AND slice_id="' + str(sliceID) + '"'
     cursor.execute(select)
-    for (physical_server_id) in cursor:
-        print("Physical ID: %s" % physical_server_id)
-    cnx.commit()
 
+    for (physical_server_id) in cursor:
+        serverID = physical_server_id
+
+    serverID = re.sub('\W+','', str(serverID))
+
+    for i in range(len(virtualMetrics[0]['data']['result'])):
+        addVirtualServer = 'INSERT INTO `Virtual_resource` (`name`, `physical_server_id`) VALUES("' + str(
+            virtualMetrics[0]['data']['result'][i]['metric']['name']) + '", "' + str(serverID) + '")'
+        print(addVirtualServer)
+        cursor.execute(addVirtualServer)
+
+    cnx.commit()
 
 
 class sliceThread (threading.Thread):
