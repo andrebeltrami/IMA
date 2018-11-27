@@ -5,28 +5,68 @@ import time
 import pandas as pd
 import mysql.connector
 import re
+import atexit
 
+def cleanDB(cnx):
+    print("Fechando a conexao")
+    cnx.close()
 
-def virtualMetricsDB(virtualMetrics, cnx, agent, sliceID):
+def virtualMetricsDB(virtualMetrics, cnx, agent, sliceID, first):
     i = 0
     j = 0
 
-    cursor = cnx.cursor()
-    select = 'SELECT physical_server_id FROM Physical_server WHERE ip="' + str(agent) + '" AND slice_id="' + str(sliceID) + '"'
-    cursor.execute(select)
+    if first == True:
+        cursor = cnx.cursor()
+        select = 'SELECT physical_server_id FROM Physical_server WHERE ip="' + str(agent) + '" AND slice_id="' + str(sliceID) + '"'
+        cursor.execute(select)
 
-    for (physical_server_id) in cursor:
-        serverID = physical_server_id
+        for (physical_server_id) in cursor:
+            serverID = physical_server_id
 
-    serverID = re.sub('\W+','', str(serverID))
+        serverID = re.sub('\W+','', str(serverID))
 
-    for i in range(len(virtualMetrics[0]['data']['result'])):
-        addVirtualServer = 'INSERT INTO `Virtual_resource` (`name`, `physical_server_id`) VALUES("' + str(
-            virtualMetrics[0]['data']['result'][i]['metric']['name']) + '", "' + str(serverID) + '")'
-        print(addVirtualServer)
-        cursor.execute(addVirtualServer)
+        for i in range(len(virtualMetrics[0]['data']['result'])):
+            addVirtualServer = 'INSERT INTO `Virtual_resource` (`name`, `physical_server_id`) VALUES("' + str(
+                virtualMetrics[0]['data']['result'][i]['metric']['name']) + '", "' + str(serverID) + '")'
+            print(addVirtualServer)
+            try:
+                cursor.execute(addVirtualServer)
+                select = 'SELECT virtual_resource_id FROM Virtual_resource WHERE name="' + str(
+                virtualMetrics[0]['data']['result'][i]['metric']['name']) + '" AND physical_server_id="' + str(serverID) + '"'
 
-    cnx.commit()
+
+                cursor.execute(select)
+                for (virtual_resource_id) in cursor:
+                    virtualResource = virtual_resource_id
+                virtualResource = re.sub('\W+', '', str(virtualResource))
+                #print("Virtual resource %s" % virtualResource)
+
+                addMetric = 'INSERT INTO `Virtual_resource_metric` (`name`, `virtual_resource_id`) VALUES("Network Received Packets", "' + virtualResource + '")'
+                print(addMetric)
+                cursor.execute(addMetric)
+
+                addMetric = 'INSERT INTO `Virtual_resource_metric` (`name`, `virtual_resource_id`) VALUES("Network Transmited Packets", "' + virtualResource + '")'
+                cursor.execute(addMetric)
+
+                addMetric = 'INSERT INTO `Virtual_resource_metric` (`name`, `virtual_resource_id`) VALUES("Virtual CPU Used", "' + virtualResource + '")'
+                cursor.execute(addMetric)
+
+                addMetric = 'INSERT INTO `Virtual_resource_metric` (`name`, `virtual_resource_id`) VALUES("Virtual RAM Used", "' + virtualResource + '")'
+                cursor.execute(addMetric)
+
+                addMetric = 'INSERT INTO `Virtual_resource_metric` (`name`, `virtual_resource_id`) VALUES("Virtual Disk Bytes Reads", "' + virtualResource + '")'
+                cursor.execute(addMetric)
+
+                addMetric = 'INSERT INTO `Virtual_resource_metric` (`name`, `virtual_resource_id`) VALUES("Virtual Disk Bytes Writes", "' + virtualResource + '")'
+                cursor.execute(addMetric)
+            except:
+                print("Caught exception on database!")
+
+
+        #for i in range(len(virtualMetrics[0]['data']['result'])):
+        #    select = 'SELECT id FROM Virtual_resource_metric WHERE name="Network Received Packets" AND virtual_resource_id="' + str(serverID) + '"'
+
+        cnx.commit()
 
 
 class sliceThread (threading.Thread):
@@ -38,6 +78,7 @@ class sliceThread (threading.Thread):
         print(sliceID, agents)
 
     def run(self):
+        first = True
         while (True):
 
             print("Starting Collecting Metrics from {} Agents: {}\n".format(self.sliceID,self.agents))
@@ -132,8 +173,8 @@ class sliceThread (threading.Thread):
                 print("Métrica P4: %s" % metricP4)
 
                 physicalMetrics = [metricP1, metricP2, metricP3, metricP4]
-                virtualMetricsDB(virtualMetrics, self.cnx, i, self.sliceID)
-
+                virtualMetricsDB(virtualMetrics, self.cnx, i, self.sliceID, first)
+                first = False
 
 
                 #Métrica 5: Physical Disk Bytes Reads
@@ -158,7 +199,7 @@ class sliceThread (threading.Thread):
 
 
 
-agentsList = ['slice1', ['200.136.191.94'], 'slice2', ['200.136.191.111']]
+agentsList = ['slice1', ['200.136.191.111'], 'slice2', ['200.136.191.94']]
 #for key, value in agentsList.items():
 
 cnx = mysql.connector.connect(user="andre", password="openstack",
@@ -184,11 +225,21 @@ while i < len(agentsList):
         j = j + 1
     i = i + 2
 
-threadSlice1 = sliceThread(agentsList[0], agentsList[1], cnx)
-threadSlice2 = sliceThread(agentsList[2], agentsList[3], cnx2)
+try:
+    threadSlice1 = sliceThread(agentsList[0], agentsList[1], cnx)
+    threadSlice1.start()
+except:
+    print ("Caught exception in Thread 1")
 
-threadSlice1.start()
-threadSlice2.start()
+try:
+    threadSlice2 = sliceThread(agentsList[2], agentsList[3], cnx2)
+    threadSlice2.start()
+except:
+    print("Caught exception in Thread 2")
+
+atexit.register(cleanDB, cnx)
+atexit.register(cleanDB, cnx2)
+
 
 
 
