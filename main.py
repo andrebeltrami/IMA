@@ -6,6 +6,7 @@ import pandas as pd
 import mysql.connector
 import re
 import atexit
+from datetime import timedelta, datetime
 
 def cleanDB(cnx):
     print("Fechando a conexao")
@@ -14,59 +15,56 @@ def cleanDB(cnx):
 def virtualMetricsDB(virtualMetrics, cnx, agent, sliceID, first):
     i = 0
     j = 0
+    cursor = cnx.cursor()
 
     if first == True:
-        cursor = cnx.cursor()
         select = 'SELECT physical_server_id FROM Physical_server WHERE ip="' + str(agent) + '" AND slice_id="' + str(sliceID) + '"'
         cursor.execute(select)
 
         for (physical_server_id) in cursor:
             serverID = physical_server_id
+            serverID = re.sub('\W+','', str(serverID))
 
-        serverID = re.sub('\W+','', str(serverID))
-
-        for i in range(len(virtualMetrics[0]['data']['result'])):
-            addVirtualServer = 'INSERT INTO `Virtual_resource` (`name`, `physical_server_id`) VALUES("' + str(
-                virtualMetrics[0]['data']['result'][i]['metric']['name']) + '", "' + str(serverID) + '")'
-            print(addVirtualServer)
-            try:
+            for i in range(len(virtualMetrics[0]['data']['result'])):
+                addVirtualServer = 'INSERT INTO `Virtual_resource` (`name`, `physical_server_id`) VALUES("' + str(
+                    virtualMetrics[0]['data']['result'][i]['metric']['name']) + '", "' + str(serverID) + '")'
+                print(addVirtualServer)
                 cursor.execute(addVirtualServer)
-                select = 'SELECT virtual_resource_id FROM Virtual_resource WHERE name="' + str(
-                virtualMetrics[0]['data']['result'][i]['metric']['name']) + '" AND physical_server_id="' + str(serverID) + '"'
+
+    select = 'SELECT virtual_resource_id, name FROM Slice NATURAL JOIN Physical_server NATURAL JOIN Virtual_resource WHERE slice_id="'+ str(sliceID) + '"'
+    cursor.execute(select)
+
+    i = 0
+    nMetrics = 6 # Número de métricas coletadas!
+
+    j = 0
+    metricDict = dict()
+
+    timestamp = virtualMetrics[0]['data']['result'][0]['value'][0]
+    #timestamp = time.ctime(int(timestamp))
+    print("Timestamp %s \n" % timestamp)
+
+    for (virtual_resource_id, name) in cursor:
+        virtualResource = virtual_resource_id
+        virtualResource = re.sub('\W+', '', str(virtualResource))
+        metricDict[name] = [virtualResource, timestamp]
 
 
-                cursor.execute(select)
-                for (virtual_resource_id) in cursor:
-                    virtualResource = virtual_resource_id
-                virtualResource = re.sub('\W+', '', str(virtualResource))
-                #print("Virtual resource %s" % virtualResource)
+    for i in range(nMetrics):
+        for j in range(len(virtualMetrics[i]['data']['result'])):
+            metricDict[str(virtualMetrics[i]['data']['result'][j]['metric']['name'])].append(str(virtualMetrics[i]['data']['result'][j]['value'][1]))
 
-                addMetric = 'INSERT INTO `Virtual_resource_metric` (`name`, `virtual_resource_id`) VALUES("Network Received Packets", "' + virtualResource + '")'
-                print(addMetric)
-                cursor.execute(addMetric)
+    for slice,val in metricDict.items():
+        print(slice, "-> ", val)
 
-                addMetric = 'INSERT INTO `Virtual_resource_metric` (`name`, `virtual_resource_id`) VALUES("Network Transmited Packets", "' + virtualResource + '")'
-                cursor.execute(addMetric)
-
-                addMetric = 'INSERT INTO `Virtual_resource_metric` (`name`, `virtual_resource_id`) VALUES("Virtual CPU Used", "' + virtualResource + '")'
-                cursor.execute(addMetric)
-
-                addMetric = 'INSERT INTO `Virtual_resource_metric` (`name`, `virtual_resource_id`) VALUES("Virtual RAM Used", "' + virtualResource + '")'
-                cursor.execute(addMetric)
-
-                addMetric = 'INSERT INTO `Virtual_resource_metric` (`name`, `virtual_resource_id`) VALUES("Virtual Disk Bytes Reads", "' + virtualResource + '")'
-                cursor.execute(addMetric)
-
-                addMetric = 'INSERT INTO `Virtual_resource_metric` (`name`, `virtual_resource_id`) VALUES("Virtual Disk Bytes Writes", "' + virtualResource + '")'
-                cursor.execute(addMetric)
-            except:
-                print("Caught exception on database!")
+    i = 0
+    for key, value in metricDict.items():
+        addMetric = 'INSERT INTO `Virtual_resource_measure` (`virtual_resource_id`, `timestamp`, `net_received`, `net_transmited`, `cpu_usage`, `ram_usage`, `disk_reads`, `disk_writes`) VALUES("' + str(value[0]) + '", "' + str(value[1]) + '", "' + str(value[2]) + '", "' + str(value[3]) + '", "' + str(value[4]) + '", "' + str(value[5]) + '", "' + str(value[6]) + '", "' + str(value[7]) + '")'
+        print("Add Metrics ", addMetric)
+        cursor.execute(addMetric)
 
 
-        #for i in range(len(virtualMetrics[0]['data']['result'])):
-        #    select = 'SELECT id FROM Virtual_resource_metric WHERE name="Network Received Packets" AND virtual_resource_id="' + str(serverID) + '"'
-
-        cnx.commit()
+    cnx.commit()
 
 
 class sliceThread (threading.Thread):
