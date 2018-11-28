@@ -12,25 +12,27 @@ def cleanDB(cnx):
     print("Fechando a conexao")
     cnx.close()
 
-def virtualMetricsDB(virtualMetrics, cnx, agent, sliceID, first):
+def virtualMetricsDB(virtualMetrics, cnx, agent, sliceID, count):
     i = 0
     j = 0
-    cursor = cnx.cursor()
 
-    if first == True:
+    if count != 0:
+        cursor = cnx.cursor()
         select = 'SELECT physical_server_id FROM Physical_server WHERE ip="' + str(agent) + '" AND slice_id="' + str(sliceID) + '"'
         cursor.execute(select)
+        print("COUNT: ", count)
 
         for (physical_server_id) in cursor:
             serverID = physical_server_id
             serverID = re.sub('\W+','', str(serverID))
 
             for i in range(len(virtualMetrics[0]['data']['result'])):
-                addVirtualServer = 'INSERT INTO `Virtual_resource` (`name`, `physical_server_id`) VALUES("' + str(
-                    virtualMetrics[0]['data']['result'][i]['metric']['name']) + '", "' + str(serverID) + '")'
+                addVirtualServer = 'INSERT INTO `Virtual_resource` (`name`, `physical_server_id`) VALUES("' + str(virtualMetrics[0]['data']['result'][i]['metric']['name']) + '", "' + str(serverID) + '")'
                 print(addVirtualServer)
                 cursor.execute(addVirtualServer)
 
+
+    cursor = cnx.cursor()
     select = 'SELECT virtual_resource_id, name FROM Slice NATURAL JOIN Physical_server NATURAL JOIN Virtual_resource WHERE slice_id="'+ str(sliceID) + '"'
     cursor.execute(select)
 
@@ -49,10 +51,12 @@ def virtualMetricsDB(virtualMetrics, cnx, agent, sliceID, first):
         virtualResource = re.sub('\W+', '', str(virtualResource))
         metricDict[name] = [virtualResource, timestamp]
 
-
+    i = 0
+    j = 0
     for i in range(nMetrics):
         for j in range(len(virtualMetrics[i]['data']['result'])):
-            metricDict[virtualMetrics[i]['data']['result'][j]['metric']['name']].append(str(virtualMetrics[i]['data']['result'][j]['value'][1]))
+                print("j ", str(virtualMetrics[i]['data']['result'][j]['value'][1]), "for name: ", str(virtualMetrics[i]['data']['result'][j]['metric']['name']) )
+                metricDict[str(virtualMetrics[i]['data']['result'][j]['metric']['name'])].append(str(virtualMetrics[i]['data']['result'][j]['value'][1]))
 
     for slice,val in metricDict.items():
         print(slice, "-> ", val)
@@ -76,7 +80,7 @@ class sliceThread (threading.Thread):
         print(sliceID, agents)
 
     def run(self):
-        first = True
+        count = len(self.agents)
         while (True):
 
             print("Starting Collecting Metrics from {} Agents: {}\n".format(self.sliceID,self.agents))
@@ -84,6 +88,7 @@ class sliceThread (threading.Thread):
             for i in self.agents:
                 URL = "http://%s:9090/api/v1/query?" % i
                 print(URL)
+
 
                 # Métrica 1: Virtual network receive
                 query = 'sum(rate(container_network_receive_bytes_total{name=~"%s.*"}[10s])) by (name)' % self.sliceID
@@ -171,9 +176,10 @@ class sliceThread (threading.Thread):
                 print("Métrica P4: %s" % metricP4)
 
                 physicalMetrics = [metricP1, metricP2, metricP3, metricP4]
-                virtualMetricsDB(virtualMetrics, self.cnx, i, self.sliceID, first)
-                first = False
+                virtualMetricsDB(virtualMetrics, self.cnx, i, self.sliceID, count)
 
+                if count != 0:
+                    count = count - 1
 
                 #Métrica 5: Physical Disk Bytes Reads
                 #query = 'sum(rate(node_disk_bytes_read_total[10s])) by (device)'
@@ -191,7 +197,7 @@ class sliceThread (threading.Thread):
                 #metricP6 = json.loads(request.text)
                 #print("Métrica P6: %s" % metricP6)
 
-                time.sleep(10)
+                time.sleep(15)
 
 
 
@@ -229,11 +235,11 @@ try:
 except:
     print ("Caught exception in Thread 1")
 
-try:
-    threadSlice2 = sliceThread(agentsList[2], agentsList[3], cnx2)
-    threadSlice2.start()
-except:
-    print("Caught exception in Thread 2")
+#try:
+    #threadSlice2 = sliceThread(agentsList[2], agentsList[3], cnx2)
+    #threadSlice2.start()
+#except:
+    #print("Caught exception in Thread 2")
 
 atexit.register(cleanDB, cnx)
 atexit.register(cleanDB, cnx2)
