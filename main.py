@@ -52,7 +52,7 @@ def virtualMetricsDB(virtualMetrics, cnx, agent, sliceID, first):
 
     for i in range(nMetrics):
         for j in range(len(virtualMetrics[i]['data']['result'])):
-            metricDict[str(virtualMetrics[i]['data']['result'][j]['metric']['name'])].append(str(virtualMetrics[i]['data']['result'][j]['value'][1]))
+            metricDict[virtualMetrics[i]['data']['result'][j]['metric']['name']].append(str(virtualMetrics[i]['data']['result'][j]['value'][1]))
 
     for slice,val in metricDict.items():
         print(slice, "-> ", val)
@@ -83,7 +83,7 @@ class sliceThread (threading.Thread):
 
             for i in self.agents:
                 URL = "http://%s:9090/api/v1/query?" % i
-                #print(URL)
+                print(URL)
 
                 # Métrica 1: Virtual network receive
                 query = 'sum(rate(container_network_receive_bytes_total{name=~"%s.*"}[10s])) by (name)' % self.sliceID
@@ -197,7 +197,7 @@ class sliceThread (threading.Thread):
 
 
 
-agentsList = ['slice1', ['200.136.191.111'], 'slice2', ['200.136.191.94']]
+agentsList = ['slice1', ['200.136.191.111','200.136.191.94'], 'slice2', ['200.136.191.101','200.136.191.24']]
 #for key, value in agentsList.items():
 
 cnx = mysql.connector.connect(user="andre", password="openstack",
