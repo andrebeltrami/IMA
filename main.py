@@ -12,7 +12,7 @@ def cleanDB(cnx):
     print("Fechando a conexao")
     cnx.close()
 
-def virtualMetricsDB(virtualMetrics, cnx, agent, sliceID, count):
+def virtualMetricsDB(virtualMetrics, cnx, agent, sliceID, count, timestamp):
     i = 0
     j = 0
 
@@ -33,7 +33,7 @@ def virtualMetricsDB(virtualMetrics, cnx, agent, sliceID, count):
 
 
     cursor = cnx.cursor()
-    select = 'SELECT virtual_resource_id, name FROM Slice NATURAL JOIN Physical_server NATURAL JOIN Virtual_resource WHERE slice_id="'+ str(sliceID) + '"'
+    select = 'SELECT virtual_resource_id, name FROM Slice NATURAL JOIN Physical_server NATURAL JOIN Virtual_resource WHERE slice_id="'+ str(sliceID) + '"' + 'AND ip="' + str(agent) + '"'
     cursor.execute(select)
 
     i = 0
@@ -42,7 +42,7 @@ def virtualMetricsDB(virtualMetrics, cnx, agent, sliceID, count):
     j = 0
     metricDict = dict()
 
-    timestamp = virtualMetrics[0]['data']['result'][0]['value'][0]
+    #timestamp = virtualMetrics[0]['data']['result'][0]['value'][0]
     #timestamp = time.ctime(int(timestamp))
     print("Timestamp %s \n" % timestamp)
 
@@ -63,10 +63,15 @@ def virtualMetricsDB(virtualMetrics, cnx, agent, sliceID, count):
 
     i = 0
     for key, value in metricDict.items():
-        addMetric = 'INSERT INTO `Virtual_resource_measure` (`virtual_resource_id`, `timestamp`, `net_received`, `net_transmited`, `cpu_usage`, `ram_usage`, `disk_reads`, `disk_writes`) VALUES("' + str(value[0]) + '", "' + str(value[1]) + '", "' + str(value[2]) + '", "' + str(value[3]) + '", "' + str(value[4]) + '", "' + str(value[5]) + '", "' + str(value[6]) + '", "' + str(value[7]) + '")'
-        print("Add Metrics ", addMetric)
-        cursor.execute(addMetric)
-
+        if(len(value) == 8):
+            addMetric = 'INSERT INTO `Virtual_resource_measure` (`virtual_resource_id`, `timestamp`, `net_received`, `net_transmited`, `cpu_usage`, `ram_usage`, `disk_reads`, `disk_writes`) VALUES("' + str(value[0]) + '", "' + str(value[1]) + '", "' + str(value[2]) + '", "' + str(value[3]) + '", "' + str(value[4]) + '", "' + str(value[5]) + '", "' + str(value[6]) + '", "' + str(value[7]) + '")'
+            print("Add Metrics ", addMetric)
+            try:
+                cursor.execute(addMetric)
+            except:
+                print("Error on Insert Metric ", value)
+        else:
+            print("Metrics not collected right!")
 
     cnx.commit()
 
@@ -92,11 +97,11 @@ class sliceThread (threading.Thread):
 
                 # Métrica 1: Virtual network receive
                 query = 'sum(rate(container_network_receive_bytes_total{name=~"%s.*"}[10s])) by (name)' % self.sliceID
-                PARAMS = {'query': query}
+                timestamp = datetime.now().timestamp()
+                PARAMS = {'query': query, 'time': timestamp}
+                print("Timestamp ", timestamp)
                 request = requests.get(url = URL, params = PARAMS)
                 metricV1 = json.loads(request.text)
-                print(len(metricV1['data']['result']))
-                timestamp = metricV1['data']['result'][0]['value'][0]
                 print("Métrica 1: %s\n" % metricV1)
 
 
@@ -109,7 +114,8 @@ class sliceThread (threading.Thread):
                 print("Métrica 2: %s\n" % metricV2)
 
                 #Métrica 3: Virtual CPU
-                query = 'sum(rate(container_cpu_usage_seconds_total{name=~"%s.*"}[10s])) by (name) * 100' % self.sliceID
+                #query = 'sum(rate(container_cpu_usage_seconds_total{name=~"%s.*"}[10s])) by (name) * 100' % self.sliceID
+                query = 'sum(container_memory_rss{name=~"%s.*"}) by (name)' % self.sliceID
                 PARAMS = {'query': query, 'time': timestamp}
 
                 request = requests.get(url = URL, params = PARAMS)
@@ -144,39 +150,38 @@ class sliceThread (threading.Thread):
 
                 #Métricas Físicas
                 #Métrica 1: Physical Network receive
-                query = 'sum(rate(container_network_receive_bytes_total{id="/"}[10s])) by (id)'
-                PARAMS = {'query': query, 'time': timestamp}
-
-                request = requests.get(url = URL, params = PARAMS)
-                metricP1 = json.loads(request.text)
-                print("Métrica P1: %s" % metricP1)
+                #query = 'sum(rate(container_network_receive_bytes_total{id="/"}[10s])) by (id)'
+                #PARAMS = {'query': query, 'time': timestamp}
+                #request = requests.get(url = URL, params = PARAMS)
+                #metricP1 = json.loads(request.text)
+                #print("Métrica P1: %s" % metricP1)
 
                 #Métrica 2: Physical Network transmit
-                query = 'sum(rate(container_network_transmit_bytes_total{id="/"}[10s])) by (id)'
-                PARAMS = {'query': query, 'time': timestamp}
+                #query = 'sum(rate(container_network_transmit_bytes_total{id="/"}[10s])) by (id)'
+                #PARAMS = {'query': query, 'time': timestamp}
 
-                request = requests.get(url=URL, params=PARAMS)
-                metricP2 = json.loads(request.text)
-                print("Métrica P2: %s" % metricP2)
+                #request = requests.get(url=URL, params=PARAMS)
+                #metricP2 = json.loads(request.text)
+                #print("Métrica P2: %s" % metricP2)
 
                 #Métrica 3: Physical CPU
-                query = 'sum(sum by (container_name)( rate(container_cpu_usage_seconds_total[10s] ) )) / count(node_cpu_seconds_total{mode="system"}) * 100'
-                PARAMS = {'query': query, 'time': timestamp}
+                #query = 'sum(sum by (container_name)( rate(container_cpu_usage_seconds_total[10s] ) )) / count(node_cpu_seconds_total{mode="system"}) * 100'
+                #PARAMS = {'query': query, 'time': timestamp}
 
-                request = requests.get(url=URL, params=PARAMS)
-                metricP3 = json.loads(request.text)
-                print("Métrica P3: %s" % metricP3)
+                #request = requests.get(url=URL, params=PARAMS)
+                #metricP3 = json.loads(request.text)
+                #print("Métrica P3: %s" % metricP3)
 
                 #Métrica 4: Physical RAM
-                query = 'sum(node_memory_MemTotal_bytes) - sum(node_memory_MemAvailable_bytes)'
-                PARAMS = {'query': query, 'time': timestamp}
+                #query = 'sum(node_memory_MemTotal_bytes) - sum(node_memory_MemAvailable_bytes)'
+                #PARAMS = {'query': query, 'time': timestamp}
 
-                request = requests.get(url=URL, params=PARAMS)
-                metricP4 = json.loads(request.text)
-                print("Métrica P4: %s" % metricP4)
+                #request = requests.get(url=URL, params=PARAMS)
+                #metricP4 = json.loads(request.text)
+                #print("Métrica P4: %s" % metricP4)
 
-                physicalMetrics = [metricP1, metricP2, metricP3, metricP4]
-                virtualMetricsDB(virtualMetrics, self.cnx, i, self.sliceID, count)
+                #physicalMetrics = [metricP1, metricP2, metricP3, metricP4]
+                virtualMetricsDB(virtualMetrics, self.cnx, i, self.sliceID, count, timestamp)
 
                 if count != 0:
                     count = count - 1
@@ -197,7 +202,7 @@ class sliceThread (threading.Thread):
                 #metricP6 = json.loads(request.text)
                 #print("Métrica P6: %s" % metricP6)
 
-                time.sleep(15)
+            time.sleep(30)
 
 
 
@@ -235,11 +240,11 @@ try:
 except:
     print ("Caught exception in Thread 1")
 
-#try:
-    #threadSlice2 = sliceThread(agentsList[2], agentsList[3], cnx2)
-    #threadSlice2.start()
-#except:
-    #print("Caught exception in Thread 2")
+try:
+    threadSlice2 = sliceThread(agentsList[2], agentsList[3], cnx2)
+    threadSlice2.start()
+except:
+    print("Caught exception in Thread 2")
 
 atexit.register(cleanDB, cnx)
 atexit.register(cleanDB, cnx2)
