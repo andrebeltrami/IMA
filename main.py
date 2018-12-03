@@ -114,8 +114,8 @@ class sliceThread (threading.Thread):
                 print("Métrica 2: %s\n" % metricV2)
 
                 #Métrica 3: Virtual CPU
-                #query = 'sum(rate(container_cpu_usage_seconds_total{name=~"%s.*"}[10s])) by (name) * 100' % self.sliceID
-                query = 'sum(container_memory_rss{name=~"%s.*"}) by (name)' % self.sliceID
+                query = 'sum(rate(container_cpu_usage_seconds_total{name=~"%s.*"}[10s])) by (name) * 100' % self.sliceID
+                #query = 'sum(container_memory_rss{name=~"%s.*"}) by (name)' % self.sliceID
                 PARAMS = {'query': query, 'time': timestamp}
 
                 request = requests.get(url = URL, params = PARAMS)
@@ -131,7 +131,7 @@ class sliceThread (threading.Thread):
                 print("Métrica 4: %s\n" % metricV4)
 
                 #Métrica 5: Virtual Disk Bytes Reads
-                query = 'container_fs_reads_bytes_total{name=~"%s.*"}' % self.sliceID
+                query = 'sum(rate(container_fs_reads_bytes_total{name=~"%s.*"}[10s])) by (name)' % self.sliceID
                 PARAMS = {'query': query, 'time': timestamp}
 
                 request = requests.get(url = URL, params = PARAMS)
@@ -139,7 +139,7 @@ class sliceThread (threading.Thread):
                 print("Métrica 5: %s\n" % metricV5)
 
                 #Métrica 6: Virtual Disk Bytes Writes
-                query = 'container_fs_writes_bytes_total{name=~"%s.*"}' % self.sliceID
+                query = 'sum(rate(container_fs_writes_bytes_total{name=~"%s.*"}[10s])) by (name)' % self.sliceID
                 PARAMS = {'query': query, 'time': timestamp}
 
                 request = requests.get(url = URL, params=PARAMS)
