@@ -208,7 +208,7 @@ class sliceThread (threading.Thread):
 
 
 
-agentsList = ['slice1', ['200.136.191.111','200.136.191.94'], 'slice2', ['200.136.191.101','200.136.191.24']]
+agentsList = ['slice1', ['200.136.191.111','200.136.191.24'], 'slice2', ['200.136.191.94','200.136.191.101 ']]
 #for key, value in agentsList.items():
 
 cnx = mysql.connector.connect(user="andre", password="openstack",
